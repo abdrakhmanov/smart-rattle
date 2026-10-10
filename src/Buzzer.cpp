@@ -19,6 +19,9 @@ void Buzzer::begin() {
   _nextMs = 0;
   _lastNow = 0;
   _tempo = 1.0f;
+  _gliding = false;
+  _glideHz = 0.0f;
+  setVolumeLevel(VolumeLevel::Quiet);   // §12: громкость по умолчанию
 }
 
 float Buzzer::pitchOf(int step) {
@@ -31,6 +34,7 @@ float Buzzer::pitchOf(int step) {
 }
 
 void Buzzer::play(const Note* notes, size_t n) {
+  if (_gliding) { _gliding = false; emitStop(); }
   _head = 0;
   _count = 0;
   _nextMs = _lastNow;        // первая нота звучит сразу
@@ -38,6 +42,7 @@ void Buzzer::play(const Note* notes, size_t n) {
 }
 
 void Buzzer::push(const Note& n) {
+  if (_gliding) { _gliding = false; emitStop(); }
   if (_count >= kNoteCapacity) return;   // §12: новая нота отбрасывается
   _ring[(_head + _count) % kNoteCapacity] = n;
   ++_count;
@@ -47,11 +52,13 @@ void Buzzer::stop() {
   _head = 0;
   _count = 0;
   _nextMs = _lastNow;
+  _gliding = false;
+  _glideHz = 0.0f;
   emitStop();
 }
 
 bool Buzzer::isPlaying() const {
-  return _count > 0 || _lastNow < _nextMs;
+  return _gliding || _count > 0 || _lastNow < _nextMs;
 }
 
 void Buzzer::setTempoScale(float s) {
@@ -62,6 +69,7 @@ void Buzzer::setTempoScale(float s) {
 
 void Buzzer::update(uint32_t now) {
   _lastNow = now;
+  if (_gliding) return;   // динамик в исключительном владении глиссандо
   if (_count == 0) return;
   if (now < _nextMs) return;
 
@@ -87,5 +95,51 @@ void Buzzer::emitTone(float hz, uint16_t durMs) {
 void Buzzer::emitStop() {
 #if defined(ARDUINO)
   M5.Speaker.stop();
+#endif
+}
+
+void Buzzer::glide(float hz) {
+  _head = 0;
+  _count = 0;
+  _nextMs = _lastNow;
+  // Повторная выдача тона на той же частоте дала бы щелчок на ровном месте.
+  if (!_gliding || fabsf(hz - _glideHz) > 1.0f) {
+    _glideHz = hz;
+    emitGlide(hz);
+  }
+  _gliding = true;
+}
+
+void Buzzer::setVolumeLevel(VolumeLevel v) {
+  switch (v) {
+    case VolumeLevel::Quiet:
+      _volume = (uint8_t)((uint16_t)kMaxMasterVolume * kVolumeQuietPct / 100);
+      break;
+    case VolumeLevel::Normal:
+      _volume = kMaxMasterVolume;
+      break;
+    case VolumeLevel::Mute:
+    default:
+      _volume = 0;
+      break;
+  }
+  applyVolume(_volume);
+}
+
+void Buzzer::emitGlide(float hz) {
+#if defined(ARDUINO)
+  // Бесконечный тон на выделенном канале; смена частоты перебивает прежний.
+  M5.Speaker.tone(hz, UINT32_MAX, 0, true);
+#else
+  (void)hz;
+#endif
+}
+
+void Buzzer::applyVolume(uint8_t v) {
+#if defined(ARDUINO)
+  // Единственное место в проекте, где вызывается setVolume (§8).
+  M5.Speaker.setVolume(v);
+#else
+  (void)v;
 #endif
 }
