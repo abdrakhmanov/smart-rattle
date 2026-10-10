@@ -13,6 +13,10 @@ constexpr uint32_t kBatteryPollMs    = 5000;
 constexpr uint32_t kNvsDebounceMs    = 3000;
 constexpr uint32_t kSplashMs         = 800;
 constexpr uint32_t kMotionActiveMs   = 500;   // «устройство недавно шевелилось»
+// Потолок измеренного dt (после сплэша/долгой отрисовки/блокирующей записи
+// NVS). Единый для main.cpp и Accel — раньше Accel зажимал свою копию
+// отдельно от Context.dtMs, что могло разойтись (final review, Minor).
+constexpr uint32_t kAccelMaxDtMs     = 100;
 
 // ---- Детектор тряски (калибруется) ----
 constexpr float    kShakeOn          = 0.35f;   // g, по сглаженному excess
@@ -68,6 +72,13 @@ constexpr uint32_t kMaracaFadeMs        = 600;
 constexpr uint8_t  kMaracaPaletteSize   = 12;
 constexpr uint32_t kMaracaLevelTauMs    = 400;  // огибающая яркости, см. расхождение 3
 constexpr float    kMaracaValueFloor    = 0.55f;
+// Минимальный интервал между сменами HUE полноэкранной вспышки. Без него
+// повторная тряска-стоп-тряска может переключать насыщенный цвет на
+// частоте ~2-3.7 Гц (кадансуется kRefractoryMs+kShakeOffMs) — это задевает
+// границу диапазона фотосенситивного риска (3-30 Гц). Сама вспышка на
+// каждую тряску остаётся, просто повторно использует текущий HUE, если
+// порог не истёк (final review, Important 4).
+constexpr uint32_t kMaracaHueMinIntervalMs = 2000;
 
 // ---- Шкатулка ----
 constexpr uint8_t  kWindMax             = 6;

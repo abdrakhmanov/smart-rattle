@@ -19,6 +19,7 @@ class Display {
   void drawBodyMessage(const char* text, uint16_t color);
 
   void setBrightness(uint8_t v);           // зажимается kMaxBrightness
+  uint8_t brightness() const { return _brightness; }
   void sleep();                            // гасит панель перед deep sleep
 
   int16_t bodyTop()    const { return kBarHeight; }

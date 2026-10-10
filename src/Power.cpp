@@ -25,6 +25,10 @@ void Power::update(uint32_t now, bool activity, Display& display) {
 
   if (_warning) {
     if (now >= _warnUntilMs) {
+      // Намеренное выключение — такое же «перед сном», как и обычный deep
+      // sleep: иначе смена громкости/режима за последние kNvsDebounceMs
+      // теряется и динамик не остановлен (final review, Important 2).
+      if (_prepare) _prepare(_user);
       // Для разряженного элемента полное снятие питания честнее
       // микроампер сна (§6).
       M5.Power.powerOff();
@@ -66,7 +70,12 @@ void Power::pollBattery(uint32_t now, Display& display) {
   if (_lowStreak >= kBattOffCount && !_warning) {
     _warning = true;
     _warnUntilMs = now + kBattWarnMs;
-    display.setBrightness(kMaxBrightness);
+    // Яркость предупреждения: при критическом заряде тоже вдвое, как и
+    // обычная подсветка — не стоит пережигать последние проценты ради
+    // двух секунд полной яркости (final review, Minor).
+    const uint8_t warnBrightness = (_percent < kBattCritPct && !_charging)
+        ? (uint8_t)(kMaxBrightness / 2) : kMaxBrightness;
+    display.setBrightness(warnBrightness);
     display.drawBodyMessage("Заряд", lgfx::color565(0xFF, 0x30, 0x30));
   }
 }
@@ -86,7 +95,10 @@ void Power::enterDeepSleep(Display& display) {
 
   // Звука при засыпании нет: писк в момент, когда ребёнок успокоился,
   // работает против назначения игрушки (§6).
-  for (int b = kMaxBrightness; b >= 0; b -= 16) {
+  // Старт фейда — от ТЕКУЩЕЙ яркости, а не от kMaxBrightness: если экран
+  // уже притушен (Dimmed) или ограничен вдвое (критический заряд), иначе
+  // засыпание на миг вспыхивает полной яркостью (final review, Minor).
+  for (int b = display.brightness(); b >= 0; b -= 16) {
     display.setBrightness((uint8_t)(b < 0 ? 0 : b));
     delay(20);
   }

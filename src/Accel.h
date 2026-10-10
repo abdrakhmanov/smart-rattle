@@ -8,7 +8,10 @@
 class Accel {
  public:
   void begin();
-  void update(uint32_t nowMs);
+  // dtMs приходит от вызывающего кода уже зажатым (см. kAccelMaxDtMs в
+  // Config.h) — main.cpp зажимает один раз и передаёт то же значение
+  // сюда и в Context.dtMs для режимов (final review, Minor).
+  void update(uint32_t nowMs, uint32_t dtMs);
 
   bool isEnabled() const { return _enabled; }
 

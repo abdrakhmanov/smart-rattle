@@ -1,6 +1,7 @@
 #pragma once
 #include <math.h>
 #include <stdint.h>
+#include "Config.h"
 #include "ShakeDetector.h"
 
 struct EventCounts {
@@ -79,12 +80,21 @@ inline void feedSlap(ShakeDetector& d, EventCounts& c, uint32_t dtMs = 10) {
   feedRest(d, c, 800, dtMs);
 }
 
-// Статический наклон: гравитация делится между осью X (длинная) и Z.
+// Статический наклон: гравитация делится между длинной осью (kTiltAxis)
+// и Z. Параметризовано по kTiltAxis (final review, Important 5), а не
+// жёстко привязано к X — иначе будущая калибровка Task 7, меняющая
+// kTiltAxis на 1 или 2, молча ломает эту фикстуру и выглядит регрессией.
 inline void feedTilt(ShakeDetector& d, EventCounts& c, float degrees,
                      uint32_t ms = 2000, uint32_t dtMs = 10) {
   const float rad = degrees * 3.14159265f / 180.0f;
+  const float along = cosf(rad);   // компонента на длинной оси (kTiltAxis)
+  const float cross = sinf(rad);   // компонента на Z (вторая ось наклона)
+  float gx = 0.0f, gy = 0.0f, gz = 0.0f;
+  if (kTiltAxis == 0)      { gx = along; gz = cross; }
+  else if (kTiltAxis == 1) { gy = along; gz = cross; }
+  else                     { gz = along; gx = cross; }
   for (uint32_t t = 0; t < ms; t += dtMs) {
-    d.update(cosf(rad), 0.0f, sinf(rad), 0.0f, 0.0f, 0.0f, dtMs);
+    d.update(gx, gy, gz, 0.0f, 0.0f, 0.0f, dtMs);
     if (d.shakeStarted()) ++c.started;
     if (d.shakeEnded())   ++c.ended;
   }

@@ -22,10 +22,15 @@ void setup() {
   }
 }
 
+static uint32_t s_lastTickMs = 0;
+
 void loop() {
   const uint32_t now = millis();
+  uint32_t dtMs = (s_lastTickMs == 0) ? kTickMs : (now - s_lastTickMs);
+  if (dtMs > kAccelMaxDtMs) dtMs = kAccelMaxDtMs;
+  s_lastTickMs = now;
   M5.update();
-  accel.update(now);
+  accel.update(now, dtMs);
 
   // Калибровочная подсказка на экране: раз в 250 мс, вне CSV.
   static uint32_t lastShow = 0;

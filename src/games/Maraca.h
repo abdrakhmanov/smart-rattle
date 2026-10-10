@@ -22,6 +22,7 @@ class Maraca : public Game {
   float    _levelEnv     = 0.0f;  // огибающая яркости, tau = kMaracaLevelTauMs
   uint32_t _nextNoteMs   = 0;
   uint32_t _fadeStartMs  = 0;
+  uint32_t _lastHueMs    = 0;     // когда последний раз сменился _hue
   bool     _fading       = false;
   bool     _lit          = false;
 };
