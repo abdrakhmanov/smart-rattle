@@ -165,3 +165,7 @@ void Display::drawBar() {
     M5.Display.drawLine(cx + 2, kBatY + 5, cx - 1, kBatY + 9, kBlack);
   }
 }
+
+void Display::sleep() {
+  M5.Display.sleep();
+}
