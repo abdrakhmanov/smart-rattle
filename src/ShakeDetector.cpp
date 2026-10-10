@@ -31,7 +31,7 @@ void ShakeDetector::reset() {
 
 void ShakeDetector::update(float ax, float ay, float az,
                            float gx, float gy, float gz, uint32_t dtMs) {
-  (void)gx; (void)gy; (void)gz;  // используются в Task 4
+  _motionRate = sqrtf(gx * gx + gy * gy + gz * gz);
   if (dtMs == 0) dtMs = 1;
 
   _started = false;
@@ -49,6 +49,80 @@ void ShakeDetector::update(float ax, float ay, float az,
     lowpass(_gravity[0], ax, dtMs, kGravityTauMs);
     lowpass(_gravity[1], ay, dtMs, kGravityTauMs);
     lowpass(_gravity[2], az, dtMs, kGravityTauMs);
+  }
+
+  // Свободное падение даёт |a| ~ 0, то есть excess ~ 1,0 g — выше kShakeOn.
+  // Поэтому события гасятся уже по мгновенному признаку, не дожидаясь
+  // подтверждения длительностью kFreefallMs.
+  //
+  // Контроллер (эскалация по Task 4, второй раунд): дебаунс гейта общий
+  // для обоих состояний не может удовлетворить оба требования сразу —
+  // у них разная стоимость ошибки:
+  //  - Idle: нужен МГНОВЕННЫЙ гейт (0 отсчётов задержки). Падение со стола
+  //    начинается из покоя, excess после ФНЧ (tau=kExcessTauMs=30мс)
+  //    пересекает kShakeOn уже на 2-м отсчёте (измерено на фикстуре
+  //    feedDrop) — любая задержка гейта на этом переходе стреляет
+  //    ложной нотой в момент начала падения (именно это отклонение №5
+  //    и запрещает).
+  //  - Shaking: нужен дебаунс (измерено — порог 3, не 2) отсчётов, иначе
+  //    двухотсчётная впадина синуса в фикстуре Task 3 (feedShake,
+  //    0.8g/8Hz: mag опускается ниже kFreefallG на 2 подряд отсчёта у
+  //    дна каждого периода) каждый раз выбивает автомат в Idle и, после
+  //    возврата, немедленно взводит новый shakeStarted — активная тряска
+  //    не должна прерываться и перезапускаться такой впадиной.
+  // Поэтому гейт зависит от текущего состояния автомата, а не от одной
+  // общей константы. kFreefallG и фикстуры Task 3/4 не менялись.
+  if (mag < kFreefallG) {
+    if (_freefallSampleCount < 0xFFu) ++_freefallSampleCount;
+  } else {
+    _freefallSampleCount = 0;
+  }
+  constexpr uint8_t kFreefallDebounceShaking = 3;
+  _inFreefall = (_state == State::Idle)
+                    ? (_freefallSampleCount >= 1)
+                    : (_freefallSampleCount >= kFreefallDebounceShaking);
+  if (_inFreefall) {
+    _freefallMs += dtMs;
+    if (_freefallMs >= kFreefallMs) {
+      _sinceFreefallMs = 0;
+      _suppressMs      = kSuppressMs;
+    }
+  } else {
+    _freefallMs = 0;
+    if (_sinceFreefallMs < 0xFFFFFFFFu - dtMs) _sinceFreefallMs += dtMs;
+  }
+
+  // Удар: либо вскоре после падения (гасим и отскок), либо сам по себе —
+  // шлепок об стол. В обоих случаях подавление одинаковое (§7).
+  if (_rawExcess > kImpactG) {
+    _suppressMs = kSuppressMs;
+    if (_sinceFreefallMs <= kFreefallLinkMs) {
+      // удар связан с падением: окно начинается заново от удара
+      _sinceFreefallMs = 0;
+    }
+  }
+  _suppressMs = countdown(_suppressMs, dtMs);
+
+  if (_suppressMs > 0 || _inFreefall) {
+    // Внутри окна подавления автомат принудительно возвращается в Idle,
+    // чтобы после отскока не остаться в состоянии Shaking.
+    _state      = State::Idle;
+    _belowOffMs = 0;
+    _motionSeen = _excess > kMotionG;
+    return;
+  }
+
+  // Угол между длинной осью корпуса и вектором гравитации.
+  {
+    const float gm = sqrtf(_gravity[0] * _gravity[0] +
+                           _gravity[1] * _gravity[1] +
+                           _gravity[2] * _gravity[2]);
+    if (gm > 0.1f) {
+      float c = _gravity[kTiltAxis] / gm;
+      if (c > 1.0f) c = 1.0f;
+      if (c < -1.0f) c = -1.0f;
+      _tiltAngle = acosf(c) * 180.0f / 3.14159265f;
+    }
   }
 
   _motionSeen   = _excess > kMotionG;
@@ -81,4 +155,8 @@ void ShakeDetector::update(float ax, float ay, float az,
 
 float ShakeDetector::shakeLevel() const {
   return normalizeExcess(_excess);
+}
+
+float ShakeDetector::tiltAngle() const {
+  return _tiltAngle;
 }
