@@ -28,9 +28,10 @@ static bool        s_imuFault = false;
 static Game* const s_games[] = { &maraca, &musicBox, &tiltPiano };
 static constexpr uint8_t kGameCount = sizeof(s_games) / sizeof(s_games[0]);
 
-static uint32_t s_lastTickMs   = 0;
-static uint32_t s_lastRenderMs = 0;
-static uint32_t s_splashUntil  = 0;
+static uint32_t s_lastTickMs    = 0;
+static uint32_t s_lastRenderMs  = 0;
+static uint32_t s_splashStartMs = 0;
+static bool     s_splashActive  = false;
 
 void setup() {
   auto cfg = M5.config();
@@ -56,7 +57,7 @@ void setup() {
     games = faultGames;
     count = 1;
   }
-  manager.begin(games, count, saved, ctx);
+  manager.begin(games, count, saved, ctx, s_imuFault);
   display.setBrightness(kMaxBrightness);
 
   power.setSleepPrepare([](void* user) {
@@ -70,17 +71,24 @@ void setup() {
   if (!power.wokeFromDeepSleep()) {
     display.drawBodyMessage(manager.currentName(),
                             s_games[manager.index()]->nameColor());
-    s_splashUntil = now + kSplashMs;
+    s_splashStartMs = now;
+    s_splashActive = true;
   }
 }
 
 void loop() {
   const uint32_t now = millis();
-  const uint32_t dtMs = (s_lastTickMs == 0) ? kTickMs : (now - s_lastTickMs);
+  uint32_t dtMs = (s_lastTickMs == 0) ? kTickMs : (now - s_lastTickMs);
+  // Единый зажим dtMs: тик с блокирующей записью NVS (tickPersist) или
+  // долгой отрисовкой не должен доходить до режимов раздутым — иначе,
+  // например, свип цвета в MusicBox визуально дёргается (final review,
+  // Minor). Accel.cpp зажимал свою копию dtMs отдельно; теперь это один
+  // и тот же потолок, применённый один раз.
+  if (dtMs > kAccelMaxDtMs) dtMs = kAccelMaxDtMs;
   s_lastTickMs = now;
 
   M5.update();                                   // 1. кнопки, динамик, питание
-  accel.update(now);                             // 2. IMU и фильтры
+  accel.update(now, dtMs);                       // 2. IMU и фильтры
 
   // 3. Кнопки: A — смена режима, B — цикл громкости.
   Context btnCtx{now, dtMs, false, accel, buzzer, display};
@@ -90,9 +98,19 @@ void loop() {
   }
   if (M5.BtnB.wasClicked()) manager.cycleVolume(btnCtx);
 
-  const bool splash = now < s_splashUntil;
-  const bool renderTick = !splash && (now - s_lastRenderMs) >= kRenderMs;
-  if (renderTick) s_lastRenderMs = now;
+  // Rollover-safe сравнение millis(), как и везде в кодовой базе (final
+  // review, Minor) — раньше здесь было прямое `now < s_splashUntil`.
+  if (s_splashActive && (now - s_splashStartMs) >= kSplashMs) s_splashActive = false;
+  const bool splash = s_splashActive;
+  const bool renderTickRaw = !splash && (now - s_lastRenderMs) >= kRenderMs;
+  if (renderTickRaw) s_lastRenderMs = now;
+
+  // Пока Power держит на теле экрана эксклюзивное предупреждение о
+  // разряде, режимы не должны видеть renderTick — иначе их безусловная
+  // перерисовка тела стирает предупреждение в пределах одного тика
+  // (final review, Important 1). Само предупреждение рисуется в
+  // Power::pollBattery напрямую, минуя этот флаг.
+  const bool renderTick = renderTickRaw && !power.bodyLocked();
 
   Context ctx{now, dtMs, renderTick, accel, buzzer, display};
   manager.update(ctx);                           // 4. логика режима

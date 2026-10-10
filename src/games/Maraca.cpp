@@ -35,12 +35,18 @@ void Maraca::onExit(Context& ctx) {
 }
 
 void Maraca::startBurst(Context& ctx) {
-  int8_t pick = (int8_t)random(kMaracaPaletteSize);
-  if (pick == _paletteIndex) {
-    pick = (int8_t)((pick + 1) % kMaracaPaletteSize);
+  // Повторный быстрый шейк-стоп-шейк не должен менять насыщенный цвет на
+  // каждую вспышку — это могло стробить в районе 2-3,7 Гц (final review,
+  // Important 4). Сама вспышка/нота всё равно происходят каждый раз.
+  if (_paletteIndex < 0 || (ctx.now - _lastHueMs) >= kMaracaHueMinIntervalMs) {
+    int8_t pick = (int8_t)random(kMaracaPaletteSize);
+    if (pick == _paletteIndex) {
+      pick = (int8_t)((pick + 1) % kMaracaPaletteSize);
+    }
+    _paletteIndex = pick;
+    _hue = hueOf((uint8_t)pick);
+    _lastHueMs = ctx.now;
   }
-  _paletteIndex = pick;
-  _hue = hueOf((uint8_t)pick);
 
   const float intensity = ctx.accel.startIntensity();
   const uint16_t dur = (uint16_t)lerpf((float)kMaracaNoteMinMs,

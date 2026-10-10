@@ -37,10 +37,15 @@ SavedState loadSavedState(bool wokeFromDeepSleep) {
 }
 
 void GameManager::begin(Game* const* games, uint8_t count,
-                        const SavedState& saved, Context& ctx) {
+                        const SavedState& saved, Context& ctx,
+                        bool restrictedList) {
   _games = games;
   _count = count;
-  _index = (count == 0 || saved.gameIndex >= count) ? 0 : saved.gameIndex;
+  _restrictedList = restrictedList;
+  // Сохранённый индекс бессмыслен для ограниченного списка — он всегда
+  // стартует с 0 и не подменяет saved.gameIndex в своих собственных полях.
+  _index = (restrictedList || count == 0 || saved.gameIndex >= count)
+               ? 0 : saved.gameIndex;
   _volume = saved.volume;
   _dirty = false;
 
@@ -89,8 +94,11 @@ void GameManager::cycleVolume(Context& ctx) {
 
 void GameManager::markDirty(uint32_t now) {
   // RTC-память — это RAM, писать в неё можно на каждое изменение.
+  // В ограниченном (аварийном) списке _index всегда 0 и не означает
+  // «пользователь выбрал игру 0» — не затираем сохранённый реальный
+  // индекс, пишем только громкость (final review, Minor).
   s_rtcMagic  = kRtcMagic;
-  s_rtcIndex  = _index;
+  if (!_restrictedList) s_rtcIndex = _index;
   s_rtcVolume = (uint8_t)_volume;
 
   _dirty = true;
@@ -109,7 +117,7 @@ void GameManager::flushPersist() {
   // стирания флеша за вечер (§10).
   Preferences prefs;
   if (prefs.begin(kNvsNamespace, false)) {
-    prefs.putUChar(kNvsKeyGame, _index);
+    if (!_restrictedList) prefs.putUChar(kNvsKeyGame, _index);
     prefs.putUChar(kNvsKeyVolume, (uint8_t)_volume);
     prefs.end();
   }

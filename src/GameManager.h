@@ -16,7 +16,11 @@ SavedState loadSavedState(bool wokeFromDeepSleep);
 
 class GameManager {
  public:
-  void begin(Game* const* games, uint8_t count, const SavedState& saved, Context& ctx);
+  // restrictedList=true — список игр ограничен (например, аварийный режим
+  // без IMU): _index в этом списке не соответствует реальному сохранённому
+  // игровому режиму и не должен персиститься (final review, Minor).
+  void begin(Game* const* games, uint8_t count, const SavedState& saved, Context& ctx,
+             bool restrictedList = false);
   void update(Context& ctx);
 
   void next(Context& ctx);
@@ -38,4 +42,9 @@ class GameManager {
   VolumeLevel  _volume = VolumeLevel::Quiet;
   bool         _dirty = false;
   uint32_t     _dirtyAtMs = 0;
+  // Истинно, когда begin() получил ограниченный (аварийный) список игр —
+  // в этом режиме _index бессмыслен за пределами fault-списка и не должен
+  // попадать в RTC/NVS, иначе затирает сохранённый пользователем реальный
+  // режим нулём (final review, Minor).
+  bool         _restrictedList = false;
 };

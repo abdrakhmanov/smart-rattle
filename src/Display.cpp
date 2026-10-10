@@ -99,6 +99,10 @@ void Display::fillBodyRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
   if (h <= 0) return;
   if (y + h > bodyHeight()) h = bodyHeight() - y;
   if (h <= 0) return;
+  if (x < 0) { w += x; x = 0; }
+  if (w <= 0) return;
+  if (x + w > width()) w = width() - x;
+  if (w <= 0) return;
   M5.Display.fillRect(x, bodyTop() + y, w, h, c);
 }
 

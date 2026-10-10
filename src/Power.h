@@ -29,6 +29,11 @@ class Power {
   bool       charging()       const { return _charging; }
   PowerState state()          const { return _state; }
 
+  // Истинно, пока на теле экрана висит эксклюзивное предупреждение о
+  // разряде: режимы не должны перерисовывать тело в это время (§ final
+  // review — иначе предупреждение стирается очередным renderTick режима).
+  bool bodyLocked() const { return _warning; }
+
  private:
   void pollBattery(uint32_t now, Display& display);
   void applyBrightness(Display& display);

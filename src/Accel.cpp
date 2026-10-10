@@ -16,18 +16,14 @@ void Accel::begin() {
 #endif
 }
 
-void Accel::update(uint32_t nowMs) {
+void Accel::update(uint32_t nowMs, uint32_t dtMs) {
   if (!_enabled) return;
 
-  uint32_t dtMs = kTickMs;
-  if (_primed) {
-    dtMs = nowMs - _lastUpdateMs;
-    if (dtMs == 0) dtMs = 1;
-    if (dtMs > 100) dtMs = 100;   // после сплэша или долгой отрисовки
-  } else {
+  if (!_primed) {
     _primed = true;
     _lastMotionMs = nowMs;
   }
+  if (dtMs == 0) dtMs = 1;
   _lastUpdateMs = nowMs;
 
   float ax = 0.0f, ay = 0.0f, az = 0.0f;
