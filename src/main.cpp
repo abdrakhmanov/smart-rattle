@@ -11,16 +11,18 @@
 #include "Power.h"
 #include "games/Maraca.h"
 #include "games/MusicBox.h"
+#include "games/TiltPiano.h"
 
 static Accel       accel;
 static Buzzer      buzzer;
 static Display     display;
 static Maraca      maraca;
 static MusicBox    musicBox;
+static TiltPiano   tiltPiano;
 static GameManager manager;
 static Power       power;
 
-static Game* const s_games[] = { &maraca, &musicBox };   // TiltPiano — Task 13
+static Game* const s_games[] = { &maraca, &musicBox, &tiltPiano };
 static constexpr uint8_t kGameCount = sizeof(s_games) / sizeof(s_games[0]);
 
 static uint32_t s_lastTickMs   = 0;
