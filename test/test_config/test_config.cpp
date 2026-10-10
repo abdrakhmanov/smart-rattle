@@ -7,6 +7,7 @@ void test_shake_thresholds_ordered() {
   TEST_ASSERT_TRUE(kShakeSat < kImpactG);
   TEST_ASSERT_TRUE(kMotionG < kShakeOff);
   TEST_ASSERT_TRUE(kFreefallG < 1.0f);
+  TEST_ASSERT_TRUE(kFreefallDebounceShaking >= 1);
 }
 
 void test_render_is_multiple_of_tick() {

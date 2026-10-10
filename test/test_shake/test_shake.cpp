@@ -182,6 +182,44 @@ void test_recorded_traces() {
   }
 }
 
+// Прямая проверка границы гейта свободного падения в State::Shaking:
+// 2 подряд отсчёта mag < kFreefallG не должны подавлять, 3-й должен.
+void test_freefall_gate_debounced_while_shaking() {
+  ShakeDetector d; d.reset();
+  EventCounts c;
+  feedRest(d, c, 300);
+  feedConstant(d, c, 0.8f, 100);   // вгоняем в State::Shaking
+  TEST_ASSERT_TRUE(d.isShaking());
+
+  // 2 подряд низких отсчёта (|a| ~ 0,04g < kFreefallG) — гейт не должен
+  // сработать: тряска не прерывается.
+  d.update(0.02f, -0.01f, 0.03f, 0.0f, 0.0f, 0.0f, 10);
+  TEST_ASSERT_FALSE(d.suppressed());
+  TEST_ASSERT_TRUE(d.isShaking());
+  d.update(0.02f, -0.01f, 0.03f, 0.0f, 0.0f, 0.0f, 10);
+  TEST_ASSERT_FALSE(d.suppressed());
+  TEST_ASSERT_TRUE(d.isShaking());
+
+  // 3-й подряд низкий отсчёт — гейт обязан сработать.
+  d.update(0.02f, -0.01f, 0.03f, 0.0f, 0.0f, 0.0f, 10);
+  TEST_ASSERT_TRUE(d.suppressed());
+  TEST_ASSERT_FALSE(d.isShaking());
+}
+
+// Прямая проверка границы гейта в State::Idle: одного низкого отсчёта
+// достаточно — задержки в несколько отсчётов, как в Shaking, быть не должно.
+void test_freefall_gate_instant_while_idle() {
+  ShakeDetector d; d.reset();
+  EventCounts c;
+  feedRest(d, c, 300);
+  TEST_ASSERT_FALSE(d.isShaking());
+  TEST_ASSERT_FALSE(d.suppressed());
+
+  d.update(0.02f, -0.01f, 0.03f, 0.0f, 0.0f, 0.0f, 10);
+  TEST_ASSERT_TRUE(d.suppressed());
+  TEST_ASSERT_FALSE(d.isShaking());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_rest_yields_no_events);
@@ -200,5 +238,7 @@ int main(int, char**) {
   RUN_TEST(test_tilt_is_stable_under_shaking);
   RUN_TEST(test_motion_rate_is_gyro_magnitude);
   RUN_TEST(test_recorded_traces);
+  RUN_TEST(test_freefall_gate_debounced_while_shaking);
+  RUN_TEST(test_freefall_gate_instant_while_idle);
   return UNITY_END();
 }

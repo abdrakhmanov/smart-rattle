@@ -77,7 +77,6 @@ void ShakeDetector::update(float ax, float ay, float az,
   } else {
     _freefallSampleCount = 0;
   }
-  constexpr uint8_t kFreefallDebounceShaking = 3;
   _inFreefall = (_state == State::Idle)
                     ? (_freefallSampleCount >= 1)
                     : (_freefallSampleCount >= kFreefallDebounceShaking);
