@@ -1,52 +1,70 @@
-// Визуальный пробник Display. Заменяется штатным циклом в Task 9.
 #include <M5Unified.h>
 
+#include <esp_random.h>
+
+#include "Accel.h"
+#include "Buzzer.h"
 #include "Config.h"
 #include "Display.h"
+#include "Game.h"
+#include "games/Maraca.h"
 
+static Accel   accel;
+static Buzzer  buzzer;
 static Display display;
+static Maraca  maraca;
+
+static uint32_t s_lastTickMs   = 0;
+static uint32_t s_lastRenderMs = 0;
+static uint32_t s_lastBattMs   = 0;
 
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
+  randomSeed(esp_random());
+
   display.begin();
-  display.setTitle("Погремушка", Display::hsv(35.0f, 0.75f, 1.0f));
+  accel.begin();
+  buzzer.begin();
+  buzzer.setVolumeLevel(VolumeLevel::Quiet);
+
+  display.setTitle(maraca.name(), maraca.nameColor());
   display.setVolume(VolumeLevel::Quiet);
-  display.setBattery(100, false);
-  display.clearBody();
+  display.setBrightness(kMaxBrightness);
+
+  const uint32_t now = millis();
+  Context ctx{now, kTickMs, false, accel, buzzer, display};
+  maraca.onEnter(ctx);
 }
 
 void loop() {
-  static uint32_t phase = 0;
-  static float hue = 0.0f;
-  M5.update();
   const uint32_t now = millis();
+  const uint32_t dtMs = (s_lastTickMs == 0) ? kTickMs : (now - s_lastTickMs);
+  s_lastTickMs = now;
 
-  // Каждые 2 с меняем то, что показывает полоса.
-  if (now / 2000 != phase) {
-    phase = now / 2000;
-    switch (phase % 6) {
-      case 0: display.setTitle("Погремушка", Display::hsv(35.0f, 0.75f, 1.0f));
-              display.setVolume(VolumeLevel::Quiet);
-              display.setBattery(100, false); break;
-      case 1: display.setTitle("Шкатулка", Display::hsv(250.0f, 0.4f, 1.0f));
-              display.setVolume(VolumeLevel::Normal);
-              display.setBattery(45, false); break;
-      case 2: display.setTitle("Пианино", Display::hsv(145.0f, 0.6f, 0.9f));
-              display.setVolume(VolumeLevel::Mute);
-              display.setBattery(18, false); break;
-      case 3: display.setBattery(8, false); break;
-      case 4: display.setBattery(60, true); break;
-      default:
-        display.drawBodyMessage("Заряд", Display::hsv(0.0f, 1.0f, 1.0f));
-        break;
-    }
+  M5.update();                                   // 1. кнопки, динамик, питание
+  accel.update(now);                             // 2. IMU и фильтры
+                                                 // 3. кнопки — Task 10
+
+  const bool renderTick = (now - s_lastRenderMs) >= kRenderMs;
+  if (renderTick) s_lastRenderMs = now;
+
+  Context ctx{now, dtMs, renderTick, accel, buzzer, display};
+  maraca.update(ctx);                            // 4. логика режима
+  buzzer.update(now);                            // 5. продвижение нот
+                                                 // 6. power.update — Task 11
+
+  // Временно здесь: в Task 11 опрос батареи переезжает в Power.
+  if (now - s_lastBattMs >= kBatteryPollMs) {
+    s_lastBattMs = now;
+    int32_t level = M5.Power.getBatteryLevel();
+    if (level < 0) level = 0;
+    if (level > 100) level = 100;
+    display.setBattery((uint8_t)level,
+                       M5.Power.isCharging() == m5::Power_Class::is_charging);
   }
 
-  // Плавный свип тела: 8 с на полный круг — медленнее 0,5 Гц.
-  if ((phase % 6) != 5) {
-    hue += 360.0f * (float)kRenderMs / (float)kSweepPeriodFastMs;
-    display.fillBody(Display::hsv(hue, 0.5f, 1.0f));
-  }
-  M5.delay(kRenderMs);
+  // 7. добрать тик до kTickMs по измеренному времени
+  const uint32_t spent = millis() - now;
+  M5.delay(spent >= kTickMs ? 1 : (kTickMs - spent));
 }
