@@ -9,6 +9,7 @@
 #include "Game.h"
 #include "GameManager.h"
 #include "Power.h"
+#include "games/Fallback.h"
 #include "games/Maraca.h"
 #include "games/MusicBox.h"
 #include "games/TiltPiano.h"
@@ -19,8 +20,10 @@ static Display     display;
 static Maraca      maraca;
 static MusicBox    musicBox;
 static TiltPiano   tiltPiano;
+static Fallback    fallback;
 static GameManager manager;
 static Power       power;
+static bool        s_imuFault = false;
 
 static Game* const s_games[] = { &maraca, &musicBox, &tiltPiano };
 static constexpr uint8_t kGameCount = sizeof(s_games) / sizeof(s_games[0]);
@@ -39,10 +42,21 @@ void setup() {
   accel.begin();
   buzzer.begin();
 
+  s_imuFault = !accel.isEnabled();
+  display.setFault(s_imuFault);
+
   const SavedState saved = loadSavedState(power.wokeFromDeepSleep());
   const uint32_t now = millis();
   Context ctx{now, kTickMs, false, accel, buzzer, display};
-  manager.begin(s_games, kGameCount, saved, ctx);
+
+  Game* const* games = s_games;
+  uint8_t count = kGameCount;
+  if (s_imuFault) {
+    static Game* const faultGames[] = { &fallback };
+    games = faultGames;
+    count = 1;
+  }
+  manager.begin(games, count, saved, ctx);
   display.setBrightness(kMaxBrightness);
 
   power.setSleepPrepare([](void* user) {
@@ -70,7 +84,10 @@ void loop() {
 
   // 3. Кнопки: A — смена режима, B — цикл громкости.
   Context btnCtx{now, dtMs, false, accel, buzzer, display};
-  if (M5.BtnA.wasClicked() && !power.btnASuppressed()) manager.next(btnCtx);
+  if (M5.BtnA.wasClicked() && !power.btnASuppressed()) {
+    if (s_imuFault) fallback.strike(btnCtx);
+    else            manager.next(btnCtx);
+  }
   if (M5.BtnB.wasClicked()) manager.cycleVolume(btnCtx);
 
   const bool splash = now < s_splashUntil;
@@ -85,8 +102,8 @@ void loop() {
   // 6. Простой, яркость, засыпание.
   // §7: простой питается msSinceMotion, а не только событиями тряски —
   // медленное шевеление ребёнком тоже активность.
-  const bool activity = accel.shakeStarted() || accel.isShaking()
-                     || accel.msSinceMotion(now) < kMotionActiveMs
+  const bool activity = (!s_imuFault && (accel.shakeStarted() || accel.isShaking()
+                                         || accel.msSinceMotion(now) < kMotionActiveMs))
                      || buzzer.isPlaying()
                      || M5.BtnA.wasPressed() || M5.BtnB.wasPressed();
   power.update(now, activity, display);
