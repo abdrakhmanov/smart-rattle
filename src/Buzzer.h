@@ -25,12 +25,19 @@ class Buzzer {
   void   setTempoScale(float s);              // растягивает durMs и gapMs
   size_t pending() const { return _count; }
 
+  void    glide(float hz);              // непрерывный тон до stop()
+  void    setVolumeLevel(VolumeLevel v);
+  uint8_t volume()  const { return _volume; }
+  bool    gliding() const { return _gliding; }
+
   static float pitchOf(int step);
 
  protected:
   // Швы для нативных тестов. На железе бьют в M5.Speaker.
   virtual void emitTone(float hz, uint16_t durMs);
   virtual void emitStop();
+  virtual void emitGlide(float hz);
+  virtual void applyVolume(uint8_t v);
 
   Note     _ring[kNoteCapacity];
   size_t   _head   = 0;
@@ -38,4 +45,8 @@ class Buzzer {
   uint32_t _nextMs = 0;        // когда можно выдать следующую ноту
   uint32_t _lastNow = 0;
   float    _tempo  = 1.0f;
+
+  uint8_t _volume  = 0;
+  bool    _gliding = false;
+  float   _glideHz = 0.0f;
 };
