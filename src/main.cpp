@@ -7,16 +7,22 @@
 #include "Config.h"
 #include "Display.h"
 #include "Game.h"
+#include "GameManager.h"
 #include "games/Maraca.h"
 
-static Accel   accel;
-static Buzzer  buzzer;
-static Display display;
-static Maraca  maraca;
+static Accel       accel;
+static Buzzer      buzzer;
+static Display     display;
+static Maraca      maraca;
+static GameManager manager;
+
+static Game* const s_games[] = { &maraca };   // MusicBox и TiltPiano — Tasks 12, 13
+static constexpr uint8_t kGameCount = sizeof(s_games) / sizeof(s_games[0]);
 
 static uint32_t s_lastTickMs   = 0;
 static uint32_t s_lastRenderMs = 0;
 static uint32_t s_lastBattMs   = 0;
+static uint32_t s_splashUntil  = 0;
 
 void setup() {
   auto cfg = M5.config();
@@ -26,15 +32,17 @@ void setup() {
   display.begin();
   accel.begin();
   buzzer.begin();
-  buzzer.setVolumeLevel(VolumeLevel::Quiet);
 
-  display.setTitle(maraca.name(), maraca.nameColor());
-  display.setVolume(VolumeLevel::Quiet);
-  display.setBrightness(kMaxBrightness);
-
+  const SavedState saved = loadSavedState(false);   // wake cause — Task 11
   const uint32_t now = millis();
   Context ctx{now, kTickMs, false, accel, buzzer, display};
-  maraca.onEnter(ctx);
+  manager.begin(s_games, kGameCount, saved, ctx);
+  display.setBrightness(kMaxBrightness);
+
+  // Сплэш — состояние с временной меткой, не delay(): цикл продолжает
+  // крутиться, и первая тряска обрабатывается даже во время сплэша (§6).
+  display.drawBodyMessage(manager.currentName(), s_games[manager.index()]->nameColor());
+  s_splashUntil = now + kSplashMs;
 }
 
 void loop() {
@@ -44,13 +52,19 @@ void loop() {
 
   M5.update();                                   // 1. кнопки, динамик, питание
   accel.update(now);                             // 2. IMU и фильтры
-                                                 // 3. кнопки — Task 10
 
-  const bool renderTick = (now - s_lastRenderMs) >= kRenderMs;
+  // 3. Кнопки: A — смена режима, B — цикл громкости.
+  Context btnCtx{now, dtMs, false, accel, buzzer, display};
+  if (M5.BtnA.wasClicked()) manager.next(btnCtx);
+  if (M5.BtnB.wasClicked()) manager.cycleVolume(btnCtx);
+
+  const bool splash = now < s_splashUntil;
+  const bool renderTick = !splash && (now - s_lastRenderMs) >= kRenderMs;
   if (renderTick) s_lastRenderMs = now;
 
   Context ctx{now, dtMs, renderTick, accel, buzzer, display};
-  maraca.update(ctx);                            // 4. логика режима
+  manager.update(ctx);                           // 4. логика режима
+  manager.tickPersist(now);
   buzzer.update(now);                            // 5. продвижение нот
                                                  // 6. power.update — Task 11
 
