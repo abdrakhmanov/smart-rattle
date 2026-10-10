@@ -25,6 +25,10 @@ constexpr float    kFreefallG        = 0.3f;    // g, |a| ниже — своб�
 constexpr uint32_t kFreefallMs       = 80;
 constexpr float    kImpactG          = 3.5f;    // g, excess выше — удар
 constexpr uint32_t kFreefallLinkMs   = 500;
+// Дебаунс гейта свободного падения, применяется только в State::Shaking
+// (в Idle гейт мгновенный — см. ShakeDetector.cpp). Подобран так, чтобы
+// отсекать 2-отсчётную впадину синуса в фикстуре feedShake (0.8g/8Hz).
+constexpr uint8_t  kFreefallDebounceShaking = 3;
 constexpr uint32_t kSuppressMs       = 400;
 constexpr uint32_t kExcessTauMs      = 30;
 constexpr uint32_t kGravityTauMs     = 300;

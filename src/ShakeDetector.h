@@ -45,5 +45,8 @@ class ShakeDetector {
   uint32_t _sinceFreefallMs  = 0xFFFFFFFFu;  // с момента подтверждённого падения
   uint32_t _suppressMs       = 0;    // остаток окна подавления
   bool     _inFreefall       = false;
-  uint8_t  _freefallSampleCount = 0; // дебаунс гейта: 2 подряд отсчёта mag<kFreefallG
+  uint8_t  _freefallSampleCount = 0; // подряд отсчётов mag<kFreefallG; гейт
+                                      // мгновенный в Idle (порог 1) и с
+                                      // дебаунсом kFreefallDebounceShaking
+                                      // в Shaking — см. ShakeDetector.cpp
 };
